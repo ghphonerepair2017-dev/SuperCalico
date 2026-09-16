@@ -1,7 +1,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#221733">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Whisker Quest — A Calico Cat Platformer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +14,7 @@
     --ink:#3f2a1e; --cream:#fff6e3; --gold:#ffb937; --pink:#ff7ba9; --red:#ff5d5d;
   }
   *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ height:100%; }
+  html,body{ height:100%; height:100dvh; }
   body{
     background:#221733;
     background-image:
@@ -22,12 +25,13 @@
     background-size:340px 340px, 280px 280px, 380px 380px, 300px 300px;
     display:flex; align-items:center; justify-content:center;
     font-family:"Baloo 2", system-ui, sans-serif;
-    overflow:hidden; touch-action:none;
+    overflow:hidden; touch-action:none; overscroll-behavior:none;
   }
   #stage{
     position:relative;
-    width:min(100vw, calc(100vh * 960 / 544));
+    width:min(100vw, calc(100dvh * 960 / 544));
     aspect-ratio:960/544;
+    max-height:100dvh;
     box-shadow:0 24px 60px rgba(0,0,0,.55), 0 0 0 6px #3f2a1e, 0 0 0 12px #1c1026;
     border-radius:10px; overflow:hidden; background:#8ed4ff;
   }
@@ -118,12 +122,12 @@
   #touch{
     position:absolute; left:0; right:0; bottom:0; z-index:15;
     display:none; justify-content:space-between; align-items:flex-end;
-    padding:14px; pointer-events:none;
+    padding:14px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); pointer-events:none;
   }
   @media (pointer:coarse){ #touch{ display:flex; } }
   .tbtn{
     pointer-events:auto;
-    width:68px; height:68px; border-radius:50%;
+    width:clamp(58px, 11vw, 82px); height:clamp(58px, 11vw, 82px); border-radius:50%;
     background:rgba(255,255,255,.22); border:3px solid rgba(255,255,255,.65);
     color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center;
     user-select:none; -webkit-user-select:none; touch-action:none;
@@ -131,7 +135,16 @@
   }
   .tbtn:active, .tbtn.on{ background:rgba(255,185,55,.55); border-color:#fff; }
   .tgroup{ display:flex; gap:14px; }
-  #tJump{ width:84px; height:84px; font-size:14px; }
+  #tJump{ width:clamp(72px, 14vw, 102px); height:clamp(72px, 14vw, 102px); font-size:clamp(9px, 2vw, 14px); }
+  .mobile-hint{ display:none; }
+  @media (orientation:portrait) and (max-width:700px){
+    .panel{ padding:18px 20px; max-height:calc(100dvh - 24px); overflow:auto; }
+    .controls{ gap:8px; font-size:12px; margin-bottom:10px; }
+    .mobile-hint{ display:block; color:#a4653a; font-size:12px; font-weight:800; margin:8px 0 0; }
+    .tbtn{ width:clamp(54px, 17vw, 76px); height:clamp(54px, 17vw, 76px); }
+    #tJump{ width:clamp(68px, 20vw, 90px); height:clamp(68px, 20vw, 90px); }
+  }
+  @media (display-mode:fullscreen){ #stage{ width:100vw; max-height:100dvh; border-radius:0; box-shadow:none; } }
 </style>
 </head>
 <body>
@@ -150,6 +163,7 @@
         <span><kbd>SPACE</kbd> / <kbd>↑</kbd> jump</span>
         <span><kbd>P</kbd> pause</span>
       </div>
+      <div class="mobile-hint">Rotate your phone sideways for the best view.</div>
       <div class="sub" style="margin-bottom:16px">Stomp critters · grab fish · reach the Cat Tower!</div>
       <div><button id="btnStart" class="btn">▶ START</button><button id="btnSettings" class="btn ghost">⚙ SETTINGS</button></div>
       <div class="statline">BEST SCORE<br><span id="startBest">000000</span></div>
@@ -1551,24 +1565,30 @@ window.addEventListener('keyup', e => {
 });
 function bindTouch(id, action){
   const el = document.getElementById(id);
-  const down = e => { e.preventDefault(); Au.init(); Au.resume(); el.classList.add('on');
+  const down = e => { e.preventDefault(); if (el.setPointerCapture) el.setPointerCapture(e.pointerId); Au.init(); Au.resume(); el.classList.add('on');
     if (action === 'jump' && state === 'menu'){ startGame(); return; } press(action, true); };
   const up = e => { e.preventDefault(); el.classList.remove('on'); press(action, false); };
-  el.addEventListener('pointerdown', down);
-  el.addEventListener('pointerup', up);
-  el.addEventListener('pointercancel', up);
-  el.addEventListener('pointerleave', up);
-  el.addEventListener('contextmenu', e=>e.preventDefault());
+  el.addEventListener('pointerdown', down, {passive:false});
+  el.addEventListener('pointerup', up, {passive:false});
+  el.addEventListener('pointercancel', up, {passive:false});
+  el.addEventListener('lostpointercapture', up, {passive:false});
+  el.addEventListener('contextmenu', e=>e.preventDefault(), {passive:false});
 }
 bindTouch('tLeft','left'); bindTouch('tRight','right'); bindTouch('tJump','jump');
-
 /* ============================== UI FLOW ============================== */
+function enterMobileFullscreen(){
+  const stage = document.getElementById('stage');
+  if (window.matchMedia('(pointer:coarse)').matches && document.fullscreenEnabled && !document.fullscreenElement){
+    stage.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
+  }
+}
 function show(id){
   ['ovStart','ovSettings','ovOver','ovWin','ovPause'].forEach(o => document.getElementById(o).classList.add('hidden'));
   if (id) document.getElementById(id).classList.remove('hidden');
 }
 function startGame(){
   Au.init(); Au.resume();
+  enterMobileFullscreen();
   resetGame();
   state = 'playing';
   show(null);
