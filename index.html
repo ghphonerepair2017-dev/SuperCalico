@@ -208,7 +208,7 @@
       <div class="tbtn" id="tRight">▶</div>
     </div>
     <div class="tgroup">
-      <div class="tbtn" id="tJump">A</div>
+      <div class="tbtn" id="tJump">JUMP</div>
     </div>
   </div>
 </div>
@@ -238,7 +238,11 @@ let prevPlay = 'playing';
 let time = 0, perf = 0;
 let camX = 0, shakeT = 0, shakeMag = 0;
 let score = 0, fishCount = 0, hearts = 10, timeLeft = 240;
-const settings = { music:true, sfx:true, reducedMotion:false };
+const settings = (() => {
+  const defaults = { music:true, sfx:true, reducedMotion:false };
+  try { return { ...defaults, ...(JSON.parse(localStorage.getItem('wq_settings') || '{}')) }; }
+  catch (e) { return defaults; }
+})();
 let best = 0;
 try { best = parseInt(localStorage.getItem('wq_best') || '0', 10) || 0; } catch(e){}
 
@@ -278,7 +282,7 @@ const Au = {
     o.connect(g); g.connect(dest || this.sfx);
     o.start(t0); o.stop(t0+dur+0.03);
   },
-  noise(dur,vol,freq){
+  noise(dur,vol,freq,dest){
     if (!this.ctx) return;
     const t0 = this.ctx.currentTime;
     const n = Math.floor(this.ctx.sampleRate*dur);
@@ -288,7 +292,7 @@ const Au = {
     const src = this.ctx.createBufferSource(); src.buffer = buf;
     const f = this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value = freq;
     const g = this.ctx.createGain(); g.gain.value = vol;
-    src.connect(f); f.connect(g); g.connect(this.sfx);
+    src.connect(f); f.connect(g); g.connect(dest || this.sfx);
     src.start(t0);
   },
   mfreq(m){ return 440*Math.pow(2,(m-69)/12); },
@@ -345,7 +349,7 @@ const Au = {
     if (s % 8 === 4) this.tone(this.mfreq(root+7), 0, 0.22, 'sine', 0.10, delay, this.mus);
     // A light 16th-note groove makes the soundtrack feel intentional rather than beepy.
     if (s % 4 === 0) this.tone(115, 55, 0.09, 'sine', 0.08, delay, this.mus);
-    if (s % 8 === 4) this.noise(0.045, 0.045, 2400);
+    if (s % 8 === 4) this.noise(0.045, 0.045, 2400, this.mus);
     if (s % 16 === 12) this.tone(this.mfreq(root+12), 0, 0.08, 'square', 0.045, delay, this.mus);
     this.step++;
     if (this.step >= 32){ this.step = 0; this.bar++; }
@@ -532,7 +536,7 @@ function collectFish(x,y,fromBlock){
   addFloater(x, y-14, '+100', '#ffd94a');
   sparkle(x,y);
   if (fishCount % 12 === 0){
-    if (hearts < 5){ hearts++; addFloater(player.x+13, player.y-10, '+♥ MEW!', '#ff7ba9'); Au.heal(); }
+    if (hearts < 10){ hearts++; addFloater(player.x+13, player.y-10, '+♥ MEW!', '#ff7ba9'); Au.heal(); }
     else { score += 250; addFloater(player.x+13, player.y-10, '+250', '#ffd94a'); }
   }
 }
@@ -619,7 +623,7 @@ function updatePlayer(dt){
     if (hIt.taken) continue;
     if (Math.abs((p.x+13)-(hIt.x+11)) < 24 && Math.abs((p.y+15)-(hIt.y+11)) < 26){
       hIt.taken = true;
-      if (hearts < 5){ hearts++; addFloater(hIt.x+11, hIt.y-8, '+♥', '#ff7ba9'); }
+      if (hearts < 10){ hearts++; addFloater(hIt.x+11, hIt.y-8, '+♥', '#ff7ba9'); }
       else { score += 300; addFloater(hIt.x+11, hIt.y-8, '+300', '#ffd94a'); }
       Au.heal(); sparkle(hIt.x+11, hIt.y+11);
     }
@@ -1579,6 +1583,7 @@ function updateSettingButtons(){
   const pairs = [['settingMusic', settings.music], ['settingSfx', settings.sfx], ['settingMotion', settings.reducedMotion]];
   for (const [id,on] of pairs){ const b=document.getElementById(id); b.textContent=on?'ON':'OFF'; b.classList.toggle('on', on); }
   if (Au.ctx){ Au.sfx.gain.value = settings.sfx ? 0.9 : 0; Au.mus.gain.value = settings.music ? 0.4 : 0; }
+  try { localStorage.setItem('wq_settings', JSON.stringify(settings)); } catch (e) {}
 }
 function openSettings(){ show('ovSettings'); updateSettingButtons(); }
 document.getElementById('btnStart').addEventListener('click', startGame);
@@ -1592,9 +1597,13 @@ document.getElementById('btnAgain').addEventListener('click', startGame);
 document.getElementById('btnResume').addEventListener('click', togglePause);
 document.getElementById('muteBtn').addEventListener('click', () => { Au.init(); Au.toggleMute(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'playing') togglePause(); });
+window.addEventListener('blur', () => {
+  input.left = false; input.right = false; input.jumpHeld = false;
+});
 
 /* ============================== INIT ============================== */
 document.getElementById('startBest').textContent = String(best).padStart(6,'0');
+updateSettingButtons();
 buildLevel();
 show('ovStart');
 
