@@ -87,6 +87,12 @@
   .btn:active{ transform:translateY(5px); box-shadow:0 2px 0 #7c1f1f; }
   .btn.alt{ background:#4aa3ff; border-color:#1c4a80; box-shadow:0 7px 0 #1c4a80; }
   .btn.alt:active{ box-shadow:0 2px 0 #1c4a80; }
+  .btn.ghost{ background:#7b6bd6; border-color:#40357e; box-shadow:0 7px 0 #40357e; margin-left:8px; }
+  .btn.ghost:active{ box-shadow:0 2px 0 #40357e; }
+  .setting-row{ display:flex; align-items:center; justify-content:space-between; gap:24px; min-width:270px; margin:14px 0; color:#5a3d2a; font-weight:800; font-size:16px; }
+  .setting-row button{ min-width:112px; padding:9px 12px; border:3px solid var(--ink); border-radius:8px; background:#fff; color:var(--ink); font-family:"Press Start 2P",monospace; font-size:9px; cursor:pointer; }
+  .setting-row button.on{ background:#ffd94a; }
+  .setting-note{ color:#7c5a3a; font-size:13px; margin-top:12px; }
   .statline{ font-family:"Press Start 2P", monospace; font-size:10px; color:#7c5a3a; margin-top:16px; line-height:2; }
   .badge{
     display:inline-block; margin-top:10px; padding:8px 14px;
@@ -145,8 +151,20 @@
         <span><kbd>P</kbd> pause</span>
       </div>
       <div class="sub" style="margin-bottom:16px">Stomp critters · grab fish · reach the Cat Tower!</div>
-      <button id="btnStart" class="btn">▶ START</button>
+      <div><button id="btnStart" class="btn">▶ START</button><button id="btnSettings" class="btn ghost">⚙ SETTINGS</button></div>
       <div class="statline">BEST SCORE<br><span id="startBest">000000</span></div>
+    </div>
+  </div>
+
+  <div id="ovSettings" class="overlay hidden">
+    <div class="panel">
+      <div class="big" style="color:#7b6bd6">SETTINGS</div>
+      <div class="sub">Tune your Mewtown adventure</div>
+      <div class="setting-row"><span>Music</span><button id="settingMusic" class="on">ON</button></div>
+      <div class="setting-row"><span>Sound effects</span><button id="settingSfx" class="on">ON</button></div>
+      <div class="setting-row"><span>Reduced motion</span><button id="settingMotion">OFF</button></div>
+      <div class="setting-note">Move: A/D or ←/→ · Jump: W, ↑, or SPACE · Pause: P</div><br>
+      <button id="btnSettingsClose" class="btn alt">DONE</button>
     </div>
   </div>
 
@@ -219,7 +237,8 @@ let state = 'menu';          // menu | playing | dying | win | over | paused
 let prevPlay = 'playing';
 let time = 0, perf = 0;
 let camX = 0, shakeT = 0, shakeMag = 0;
-let score = 0, fishCount = 0, hearts = 3, timeLeft = 240;
+let score = 0, fishCount = 0, hearts = 10, timeLeft = 240;
+const settings = { music:true, sfx:true, reducedMotion:false };
 let best = 0;
 try { best = parseInt(localStorage.getItem('wq_best') || '0', 10) || 0; } catch(e){}
 
@@ -238,8 +257,8 @@ const Au = {
     this.ctx = new AC();
     this.master = this.ctx.createGain(); this.master.gain.value = this.muted?0:0.6;
     this.master.connect(this.ctx.destination);
-    this.sfx = this.ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master);
-    this.mus = this.ctx.createGain(); this.mus.gain.value = 0.4; this.mus.connect(this.master);
+    this.sfx = this.ctx.createGain(); this.sfx.gain.value = settings.sfx ? 0.9 : 0; this.sfx.connect(this.master);
+    this.mus = this.ctx.createGain(); this.mus.gain.value = settings.music ? 0.4 : 0; this.mus.connect(this.master);
   },
   resume(){ if (this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
   suspend(){ if (this.ctx && this.ctx.state==='running') this.ctx.suspend(); },
@@ -320,9 +339,14 @@ const Au = {
   schedule(){
     const STEP = 0.155, s = this.step, lead = this.LEADS[this.bar % 2];
     const barIn = Math.floor(s/8), root = this.ROOTS[(this.bar*4 + barIn) % 4];
-    if (lead[s]) this.tone(this.mfreq(lead[s]), 0, 0.16, 'triangle', 0.14, this.nextT - this.ctx.currentTime, this.mus);
-    if (s % 8 === 0) this.tone(this.mfreq(root), 0, 0.22, 'triangle', 0.13, this.nextT - this.ctx.currentTime, this.mus);
-    if (s % 8 === 4) this.tone(this.mfreq(root+7), 0, 0.2, 'triangle', 0.10, this.nextT - this.ctx.currentTime, this.mus);
+    const delay = this.nextT - this.ctx.currentTime;
+    if (lead[s]) this.tone(this.mfreq(lead[s]), 0, 0.14, 'triangle', 0.14, delay, this.mus);
+    if (s % 8 === 0) this.tone(this.mfreq(root), 0, 0.28, 'sine', 0.16, delay, this.mus);
+    if (s % 8 === 4) this.tone(this.mfreq(root+7), 0, 0.22, 'sine', 0.10, delay, this.mus);
+    // A light 16th-note groove makes the soundtrack feel intentional rather than beepy.
+    if (s % 4 === 0) this.tone(115, 55, 0.09, 'sine', 0.08, delay, this.mus);
+    if (s % 8 === 4) this.noise(0.045, 0.045, 2400);
+    if (s % 16 === 12) this.tone(this.mfreq(root+12), 0, 0.08, 'square', 0.045, delay, this.mus);
     this.step++;
     if (this.step >= 32){ this.step = 0; this.bar++; }
     this.nextT += STEP;
@@ -430,7 +454,7 @@ function resetPlayer(full){
 }
 function resetGame(){
   buildLevel();
-  score = 0; fishCount = 0; hearts = 3; timeLeft = 240;
+  score = 0; fishCount = 0; hearts = 10; timeLeft = 240;
   resetPlayer(true); player.safeX = 64; player.safeY = 14*T-30;
   camX = 0; winSeq = null; shakeT = 0;
 }
@@ -538,7 +562,7 @@ function confetti(x,y){
   }
 }
 function addFloater(x,y,text,color){ floaters.push({x,y,text,color,t:0}); }
-function shake(m){ shakeMag = Math.max(shakeMag,m); shakeT = 0.35; }
+function shake(m){ if (settings.reducedMotion) return; shakeMag = Math.max(shakeMag,m); shakeT = 0.35; }
 
 /* ============================== UPDATE ============================== */
 function updatePlayer(dt){
@@ -547,14 +571,13 @@ function updatePlayer(dt){
   p.hurtFlash = Math.max(0, p.hurtFlash - dt);
   p.sx += (1-p.sx)*Math.min(1,dt*9); p.sy += (1-p.sy)*Math.min(1,dt*9);
 
-  const acc = p.onGround?2600:1700, MAX = 265;
-  if (input.left){ p.vx -= acc*dt; p.dir = -1; }
-  if (input.right){ p.vx += acc*dt; p.dir = 1; }
-  if (!input.left && !input.right){
-    const fr = (p.onGround?2300:260)*dt;
-    if (Math.abs(p.vx) <= fr) p.vx = 0; else p.vx -= Math.sign(p.vx)*fr;
-  }
-  p.vx = clamp(p.vx, -MAX, MAX);
+  const MAX = 315;
+  const desired = input.left ? -MAX : input.right ? MAX : 0;
+  // Exponential steering avoids abrupt starts/stops while retaining tight platforming control.
+  const response = input.left || input.right ? (p.onGround ? 15 : 6.5) : (p.onGround ? 20 : 1.8);
+  p.vx += (desired - p.vx) * (1 - Math.exp(-response * dt));
+  if (Math.abs(p.vx) < 2 && !input.left && !input.right) p.vx = 0;
+  if (Math.abs(p.vx) > 10) p.dir = p.vx < 0 ? -1 : 1;
 
   if (input.jumpPressed){ p.jumpBuf = 0.13; input.jumpPressed = false; }
   else p.jumpBuf -= dt;
@@ -1303,22 +1326,22 @@ function drawHUD(){
   ctx.save();
   ctx.textBaseline = 'middle';
   // hearts
-  panelBox(12,10, 5*24+18, 40);
-  for (let i=0;i<5;i++){
+  panelBox(12,10, 10*24+18, 40);
+  for (let i=0;i<10;i++){
     const hx = 12+20+i*24, hy = 30;
     if (i < hearts) drawHeartShape(hx,hy,1.7,'#ff5d7a','#8f1f3a');
     else drawHeartShape(hx,hy,1.7,'rgba(0,0,0,.08)','#c9b8a4');
   }
   // fish
-  panelBox(176,10,128,40);
-  ctx.save(); ctx.translate(198,30); ctx.scale(1.15,1.15);
+  panelBox(278,10,128,40);
+  ctx.save(); ctx.translate(300,30); ctx.scale(1.15,1.15);
   ctx.fillStyle = '#ffcf4d'; ctx.strokeStyle = '#a3742a'; ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.ellipse(-2,0,8,5,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(5,0); ctx.lineTo(12,-5); ctx.lineTo(12,5); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#4a3226'; ctx.beginPath(); ctx.arc(-5,-1,1.3,0,Math.PI*2); ctx.fill();
   ctx.restore();
   ctx.fillStyle = '#4a2f1e'; ctx.font = '13px "Press Start 2P"'; ctx.textAlign = 'left';
-  ctx.fillText('×'+String(fishCount).padStart(2,'0'), 218, 31);
+  ctx.fillText('×'+String(fishCount).padStart(2,'0'), 320, 31);
   // time
   panelBox(W/2-72,10,144,40);
   ctx.textAlign = 'center';
@@ -1537,7 +1560,7 @@ bindTouch('tLeft','left'); bindTouch('tRight','right'); bindTouch('tJump','jump'
 
 /* ============================== UI FLOW ============================== */
 function show(id){
-  ['ovStart','ovOver','ovWin','ovPause'].forEach(o => document.getElementById(o).classList.add('hidden'));
+  ['ovStart','ovSettings','ovOver','ovWin','ovPause'].forEach(o => document.getElementById(o).classList.add('hidden'));
   if (id) document.getElementById(id).classList.remove('hidden');
 }
 function startGame(){
@@ -1552,7 +1575,18 @@ function togglePause(){
   if (state === 'playing'){ prevPlay = 'playing'; state = 'paused'; show('ovPause'); Au.suspend(); }
   else if (state === 'paused'){ state = 'playing'; show(null); Au.resume(); }
 }
+function updateSettingButtons(){
+  const pairs = [['settingMusic', settings.music], ['settingSfx', settings.sfx], ['settingMotion', settings.reducedMotion]];
+  for (const [id,on] of pairs){ const b=document.getElementById(id); b.textContent=on?'ON':'OFF'; b.classList.toggle('on', on); }
+  if (Au.ctx){ Au.sfx.gain.value = settings.sfx ? 0.9 : 0; Au.mus.gain.value = settings.music ? 0.4 : 0; }
+}
+function openSettings(){ show('ovSettings'); updateSettingButtons(); }
 document.getElementById('btnStart').addEventListener('click', startGame);
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+document.getElementById('btnSettingsClose').addEventListener('click', () => show('ovStart'));
+document.getElementById('settingMusic').addEventListener('click', () => { settings.music=!settings.music; updateSettingButtons(); });
+document.getElementById('settingSfx').addEventListener('click', () => { settings.sfx=!settings.sfx; updateSettingButtons(); });
+document.getElementById('settingMotion').addEventListener('click', () => { settings.reducedMotion=!settings.reducedMotion; updateSettingButtons(); });
 document.getElementById('btnRetry').addEventListener('click', startGame);
 document.getElementById('btnAgain').addEventListener('click', startGame);
 document.getElementById('btnResume').addEventListener('click', togglePause);
